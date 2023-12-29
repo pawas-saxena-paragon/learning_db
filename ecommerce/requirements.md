@@ -48,3 +48,10 @@ secondary requirements
 12. order status
 13. reviews
 14. promotions
+
+
+
+### things to consider in query
+- Access pattern of queries
+- transactions 
+- indexes
