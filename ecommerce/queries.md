@@ -44,7 +44,11 @@ Skipping CRUD queries.
 1. which queries are going to be fetch most
 2. which fields are going to be frequently updated
 
-3. User queries
+---
+
+### Queries
+
+1. User queries
    a. create user
 
    ```sql
@@ -58,7 +62,7 @@ Skipping CRUD queries.
        select * from address where user.id = <user_id>
    ```
 
-4. Category
+2. Category
    a. get all children category for a parent category
 
    ```sql
@@ -77,7 +81,7 @@ Skipping CRUD queries.
     ) or category_id = <category_id>
    ```
 
-5. Products
+3. Products
    a. get all products
 
    ```sql
@@ -157,7 +161,7 @@ Skipping CRUD queries.
    i. get all new products - this is basically going to happen along with one of the previously mentioned queries so just add a
    sort by `created_at desc` at the end of query
 
-6. Cart
+4. Cart
    a. get cart for a user
 
    ```sql
@@ -171,12 +175,13 @@ Skipping CRUD queries.
     where c.user_id = <user_id>
    ```
 
-   c. get sum of all items prices in cart for a user. todo add promotion discount
+   c. get sum of all items prices in cart for a user.
 
    ```sql
-    select sum(ps.price * ci.qty)  total
+    select sum(ps.price * ci.qty * pr.percent)  total
         from cart c join cart_item ci  on c.cart_id = ci.cart_id
         join product_sku ps on ps.sku = ci.sku
+        join promotion pr on ps.product_id = pr.product_id
         where c.user_id = <user_id>
         -- no grouping required here as doing it for the entire result. user_id grouping would have made sense otherwise
    ```
@@ -184,10 +189,99 @@ Skipping CRUD queries.
    d. add / delete items to cart - just insert values in `cart_item` table with the item `sku` or update the `qty` if applicable for a given
    cart it.
 
-7. Orders
-   a. convert cart into orders. these things happen - inventory is reduced, payment is created,  order is created .
-   items are deleted from cart and moved to sku order table. 
+5. Orders
+   a. convert cart into orders. these things happen - inventory is reduced, payment is created, order is created .
+   items are deleted from cart and moved to sku order table.
    consider discount also
-   ```sql
 
+   ```sql
+    -- create order
+    insert into product_order (user_id, address_id, order_status) values (<user_id>, <address_id>, 'PRE_PAYMENT');
+
+    -- create payment . No payment amounts as they are being handled by a third party
+    BEGIN
+    insert into payment (user_id, payment_type, order_id,payment_status)
+        values (<user_id>, ['OFFLINE' | 'ONLINE'], <order_id>,['SUCCESS' | 'FAILURE']);
+
+    select payment_id from payment
+        where order_id = <order_id> and payment_type = <OFFLINE> or payment_status = <SUCCESS>
+
+    -- if order is PLACED the following queries else no need to do anything
+    update product_order set order_status = 'PLACED' where order_id = <order_id>
+
+    insert into sku_order(sku, qty)
+        select sku, qty from cart ci join cart c on c.cart_id = ci.cart_id
+        where c.user_id = <user_id>
+
+    delete from cart_item
+        where cart_id = (select cart_id from cart where user_id = <user_id>)
+    COMMIT
+   ```
+
+   b. get all orders of a user
+
+   ```sql
+    select order_id from product_order where user_id <user_id>
+   ```
+
+   c. get details of a order
+
+   ```sql
+        select * from sku_order where order_id = <order_id>
+   ```
+
+   d. get all payments of a user
+
+   ```sql
+    select * from payment where user_id = <user_id>
+   ```
+
+6. Reviews
+   a. get all reviews of a product for a given rating
+
+   ```sql
+       select content from review where product_id = <product_id>  and rating = <rating>
+   ```
+
+   b. create a review
+
+   ```sql
+       insert into review (content, rating, order_id, product_id) values (<content>, <rating>, <order_id>, <product_id>)
+   ```
+
+   c. get reviews of a order
+
+   ```sql
+       select * from review where order_id = <order_id>
+   ```
+
+   d. get all reviews of a user
+
+   ```sql
+       select review_id , content
+           from review r join product_order po on r.order_id = po.order_id
+           where po.user_id = <user_id>
+   ```
+
+   e. get products ordered by a user that dont have a review
+
+   ```sql
+       select order_id
+           from product_order where user_id = <user_id>
+       except
+
+       select order_id
+           from review where user_id = <user_id>
+   ```
+
+   f. get products by popularity most reviews of a particular category
+
+   ```sql
+       with category_with_subcategory as (query 2.a)
+       select
+           p.product_id, avg(r.rating) as avg_rating
+           from products p join review r on r.product_id = r.product_id
+           where p.category_id in category_with_subcategory
+           group by p.product_id
+           order by avg_rating desc
    ```
