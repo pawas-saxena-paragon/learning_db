@@ -37,12 +37,88 @@ Skipping CRUD queries.
 ### Transaction considerations
 
 1. how to prevent simultaneous buying of a product as the qty that we have is limited and there is a delay in the order payment and order creation
+
+   Preventing two customers from purchasing the same product at the same time when there is only one quantity available involves implementing mechanisms for handling concurrent transactions. Here are some strategies you can use in the context of an e-commerce database:
+
+   1. **Database Transactions:**
+
+   - Use database transactions to ensure atomicity, consistency, isolation, and durability (ACID properties).
+   - When a customer attempts to purchase a product, start a transaction that involves updating the inventory and creating an order.
+   - If the product quantity is sufficient, proceed with the transaction; otherwise, roll back the transaction.
+
+   2. **Inventory Locking:**
+
+   - Implement a mechanism to lock the inventory record for the duration of the transaction.
+   - Before updating the inventory, acquire a lock on the product record to prevent other transactions from modifying it concurrently.
+   - Release the lock when the transaction is complete (either committed or rolled back).
+
+   3. **Optimistic Concurrency Control:**
+
+   - Use optimistic concurrency control by adding a version number to your product table.
+   - When a customer tries to purchase a product, check the version number.
+   - If the version number hasn't changed since the customer loaded the product details, proceed with the purchase; otherwise, notify the customer that the product is no longer available.
+
+   4. **Timestamps:**
+
+   - Include timestamp columns in your product table to track when the record was last updated.
+   - Check the timestamp before updating the inventory to ensure that it hasn't changed since the customer loaded the product details.
+
+   5. **Queueing Mechanism:**
+
+   - Implement a queueing mechanism to handle high concurrency.
+   - When the quantity is about to reach zero, new purchases are queued, and each transaction is processed sequentially from the queue.
+
+   6. **Redundant Quantity Checks:**
+
+   - Perform redundant checks for quantity availability just before the purchase is finalized.
+   - For example, check the quantity again during the checkout process before confirming the order.
+
 2. how to have atomicity between payment and order creation
 
 ### Index considerations
 
-1. which queries are going to be fetch most
+1. which queries are going to be fetch most.
+   a. get all children category for parent category - Index on category_id (primary key) is already present
+   b. get products within a category (Index - product table - category_id, created_at)
+
+   ```sql
+       create index idx_product_category on product (category_id)
+       create index on idx_product_created on  product (created_at)
+   ```
+
+   c. get products by promotion, brand, | sort products by price, rating 
+   product stock table index on
+
+   ```sql
+       create index idx_product_promotion on product (promotion_id)
+       create index idx_product_brand on product (brand_id)
+       create index idx_stock_product_id on product_sku (product_id)
+       create index idx_product_order_user on product_order(user_id)
+       create index idx_payment_user on payment(user_id)
+       create index idx_cart_user on cart(user_id)
+       create index idx_review_user on review(user_id)
+       create index idx_review_product on review(product_id)
+       create index idx_sku_order on sku_order(order_id)
+       -- not adding size as after filtering for product_id there wont be many rows.
+       -- Additional index will not provide any performance benefit. Same is the case with size
+
+   ```
+
+   d. get reviews of a product based on rating Index(product_id, rating)
+   e. get product ordered by reviews ratings count
+
 2. which fields are going to be frequently updated
+   a. add data to cart
+   b. create payment
+   c. create order
+   d. order sku
+3. Most tables are going to be joined by either product_id or user_id . So having an index on these fields in all tables would bring performance
+
+### Search
+
+- for searching for products , use full text search feature of postgres. `to_tsvector(col1 || '' || col2 || '' || col3)` . This will be done at the
+  the time of adding products and will include all columns of products. This will perform pre processing of text data . Tjis vector will be stored in a separate column
+- for actual search - `select product @@ websearch_to_tsquery(runing shoes men 12 UK)`
 
 ---
 
